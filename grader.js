@@ -28,6 +28,8 @@ var cheerio = require('cheerio');
 var HTMLFILE_DEFAULT = "index.html";
 var CHECKSFILE_DEFAULT = "checks.json";
 
+var rest = require('restler');
+
 var assertFileExists = function(infile) {
     var instr = infile.toString();
     if(!fs.existsSync(instr)) {
@@ -45,17 +47,38 @@ var loadChecks = function(checksfile) {
     return JSON.parse(fs.readFileSync(checksfile));
 };
 
-var checkHtmlFile = function(htmlfile, checksfile) {
+var checkHtmlFile = function(htmlfile, checksfile, success) {
     $ = cheerioHtmlFile(htmlfile);
+    if(!$) {
+	console.log('No file present');
+	}
     var checks = loadChecks(checksfile).sort();
     var out = {};
     for(var ii in checks) {
-	var present = $(checks[ii]).length > 0;
-	out[checks[ii]] = present;
+        var present = $(checks[ii]).length > 0;
+        out[checks[ii]] = present;
     }
-    return out;
+    success(out);
 };
 
+var checkHtmlURL = function(url, checksfile,success) {
+    rest.get(url).on('complete', function(data) {
+	$ = cheerio.load(data);
+	var checks = loadChecks(checksfile).sort();
+	var out = {};
+	for(var ii in checks) {
+	    var present = $(checks[ii]).length > 0;
+	    out[checks[ii]] = present;
+	}
+	success(out);
+    });
+};
+
+     var displayResult = function(resultJson) {
+	var outJson = JSON.stringify(resultJson, null, 4);
+	console.log(outJson);
+	console.log('complete');
+};
 var clone = function(fn) {
     // Workaround for commander.js issue.
     // http://stackoverflow.com/a/6772648
@@ -65,11 +88,21 @@ var clone = function(fn) {
 if(require.main == module) {
     program
 	.option('-c, --checks <check_file>', 'Path to checks.json', clone(assertFileExists), CHECKSFILE_DEFAULT)
-	.option('-f, --file <html_file>', 'Path to index.html', clone(assertFileExists), HTMLFILE_DEFAULT)
-	.parse(process.argv);
-    var checkJson = checkHtmlFile(program.file, program.checks);
-    var outJson = JSON.stringify(checkJson, null, 4);
-    console.log(outJson);
+	.option('-f, --file <html_file>', 'Path to index.html', clone(assertFileExists), false)
+	.option('-u, --url <url>','Path to url')
+    .parse(process.argv);
+
+
+  if(program.file) {
+      console.log('Checking file: ' + program.file);
+      checkHtmlFile(program.file, program.checks, displayResult);
+    }
+
+    if(program.url) {
+	console.log('Checking URL:  '+ program.url);
+	checkHtmlURL(program.url,program.checks, displayResult);
+	}
+
 } else {
     exports.checkHtmlFile = checkHtmlFile;
 }
